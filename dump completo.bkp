@@ -1,0 +1,1439 @@
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 16.2
+-- Dumped by pg_dump version 16.2
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: postgres
+--
+
+-- *not* creating schema, since initdb creates it
+
+
+ALTER SCHEMA public OWNER TO postgres;
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON SCHEMA public IS '';
+
+
+--
+-- Name: addjogadornotime(integer, integer, character varying, integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.addjogadornotime(idjogadorsp integer, numerocamisasp integer, posicaosp character varying, idtimesp integer) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM Jogadores_Times WHERE idJogador = idJogadorSP) THEN
+            INSERT INTO Jogadores_Times (idJogador, idTime) VALUES (idJogadorSP, idTimeSP);
+            UPDATE Jogadores SET numeroCamisa = numeroCamisaSP, posicao = posicaoSP WHERE idPessoa = idJogadorSP;
+        ELSE
+            RAISE WARNING 'Erro ao inserir.'; 
+            RAISE NOTICE 'Jogador % vinculado ao time %.', (SELECT nome FROM Jogadores WHERE idPessoa = idJogadorSP), (SELECT nomeTime from TIMES t JOIN Jogadores_Times jt ON t.idTime = jt.idTime WHERE jt.idJogador = idJogadorSP);
+        END IF;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.addjogadornotime(idjogadorsp integer, numerocamisasp integer, posicaosp character varying, idtimesp integer) OWNER TO postgres;
+
+--
+-- Name: calcularidade(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.calcularidade(idpessoafn integer) RETURNS TABLE(nome character varying, idade character varying)
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        RETURN QUERY
+        SELECT
+            Pessoas.nome,
+            CONCAT(EXTRACT(YEAR FROM AGE(CURRENT_DATE, Pessoas.dataNascimento))::INTEGER, ' anos')::VARCHAR(10)
+        FROM Pessoas WHERE idPessoa = idPessoaFN;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.calcularidade(idpessoafn integer) OWNER TO postgres;
+
+--
+-- Name: escjogadorreserva(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.escjogadorreserva(idjogadorsp integer, idescalacaosp integer) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        IF (SELECT COUNT(*) FROM Jogadores_Escalacoes WHERE idEscalacao = idEscalacaoSP AND titular = FALSE) < 11 THEN
+            IF NOT EXISTS (SELECT 1 FROM Jogadores_Escalacoes WHERE idJogador = idJogadorSP AND idEscalacao = idEscalacaoSP) THEN
+                INSERT INTO Jogadores_Escalacoes (idJogador, idEscalacao, titular) VALUES (idJogadorSP, idEscalacaoSP, FALSE);
+            ELSE 
+                RAISE WARNING 'Erro ao escalar jogador.';
+                RAISE NOTICE 'Jogador % j  escalado.', (SELECT nome FROM Jogadores WHERE idPessoa = idJogadorSP);
+            END IF;
+        ELSE
+            RAISE WARNING 'Erro ao escalar jogador.';
+            RAISE NOTICE 'Escala‡Æo % j  possui 11 reservas.', idEscalacaoSP;
+        END IF;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.escjogadorreserva(idjogadorsp integer, idescalacaosp integer) OWNER TO postgres;
+
+--
+-- Name: escjogadortitular(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.escjogadortitular(idjogadorsp integer, idescalacaosp integer) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        IF (SELECT COUNT(*) FROM Jogadores_Escalacoes WHERE idEscalacao = idEscalacaoSP AND titular = TRUE) < 11 THEN
+            IF NOT EXISTS (SELECT 1 FROM Jogadores_Escalacoes WHERE idJogador = idJogadorSP AND idEscalacao = idEscalacaoSP) THEN
+                INSERT INTO Jogadores_Escalacoes (idJogador, idEscalacao, titular) VALUES (idJogadorSP, idEscalacaoSP, TRUE);
+            ELSE 
+                RAISE WARNING 'Erro ao escalar jogador.';
+                RAISE NOTICE 'Jogador % j  escalado.', (SELECT nome FROM Jogadores WHERE idPessoa = idJogadorSP);
+            END IF;
+        ELSE
+            RAISE WARNING 'Erro ao escalar jogador.';
+            RAISE NOTICE 'Escala‡Æo % j  possui 11 titulares.', idEscalacaoSP;
+        END IF;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.escjogadortitular(idjogadorsp integer, idescalacaosp integer) OWNER TO postgres;
+
+--
+-- Name: getidade(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.getidade(idpessoafn integer) RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+        idade INTEGER;
+    BEGIN
+        SELECT
+            EXTRACT(YEAR FROM AGE(CURRENT_DATE, Pessoas.dataNascimento))::INTEGER
+        INTO idade
+        FROM Pessoas WHERE idPessoa = idPessoaFN;
+        RETURN idade;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.getidade(idpessoafn integer) OWNER TO postgres;
+
+--
+-- Name: log_operacoes(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.log_operacoes() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        INSERT INTO logs (operacao, tabela, usuario, descricao)
+        VALUES ('INSERT', TG_TABLE_NAME, current_user, 'Inser‡Æo de um registro' || NEW);
+    ELSIF (TG_OP = 'UPDATE') THEN
+        INSERT INTO logs (operacao, tabela, usuario, descricao)
+        VALUES ('UPDATE', TG_TABLE_NAME, current_user, 'Atualiza‡Æo de um registro' || NEW);
+    ELSIF (TG_OP = 'DELETE') THEN
+        INSERT INTO logs (operacao, tabela, usuario, descricao)
+        VALUES ('DELETE', TG_TABLE_NAME, current_user, 'Remo‡Æo de um registro' || OLD);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.log_operacoes() OWNER TO postgres;
+
+--
+-- Name: qtdjogadores(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.qtdjogadores(idtimefn integer) RETURNS TABLE(nometime character varying, quantidade character varying)
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        RETURN QUERY
+        SELECT
+            Times.nomeTime,
+            CONCAT(COUNT(Jogadores_Times.idJogador), ' jogadores')::VARCHAR(15)
+        FROM Times JOIN Jogadores_Times ON Times.idTime = Jogadores_Times.idTime WHERE Times.idTime = idTimeFN GROUP BY Times.nomeTime;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.qtdjogadores(idtimefn integer) OWNER TO postgres;
+
+--
+-- Name: qtdpartidasjogador(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.qtdpartidasjogador(idjogadorfn integer) RETURNS TABLE(nome character varying, quantidade character varying)
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        RETURN QUERY
+        SELECT
+            Jogadores.nome,
+            CONCAT(COUNT(Partidas.idPartida), ' partidas')::VARCHAR(15)
+        FROM Jogadores JOIN Jogadores_Times ON Jogadores.idPessoa = Jogadores_Times.idJogador JOIN Partidas ON Jogadores_Times.idTime = Partidas.timeCasa OR Jogadores_Times.idTime = Partidas.timeVisitante WHERE Jogadores.idPessoa = idJogadorFN GROUP BY Jogadores.nome;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.qtdpartidasjogador(idjogadorfn integer) OWNER TO postgres;
+
+--
+-- Name: qtdpartidastime(integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.qtdpartidastime(idtimefn integer) RETURNS TABLE(nometime character varying, quantidade character varying)
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        RETURN QUERY
+        SELECT
+            Times.nomeTime,
+            CONCAT(COUNT(Partidas.idPartida), ' partidas')::VARCHAR(15)
+        FROM Times JOIN Partidas ON Times.idTime = Partidas.timeCasa OR Times.idTime = Partidas.timeVisitante WHERE Times.idTime = idTimeFN GROUP BY Times.nomeTime;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.qtdpartidastime(idtimefn integer) OWNER TO postgres;
+
+--
+-- Name: removejogadordotime(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.removejogadordotime(idjogadorsp integer, idtimesp integer) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM Jogadores_Times WHERE idJogador = idJogadorSP AND idTime = idTimeSP) THEN
+            DELETE FROM Jogadores_Times WHERE idJogador = idJogadorSP AND idTime = idTimeSP;
+        ELSE
+            RAISE WARNING 'Erro ao remover.';
+            RAISE NOTICE 'Jogador % nÆo vinculado ao time %.', (SELECT nome FROM Jogadores WHERE idPessoa = idJogadorSP), (SELECT nomeTime from TIMES t JOIN Jogadores_Times jt ON t.idTime = jt.idTime WHERE jt.idJogador = idJogadorSP);
+        END IF;
+    END;
+    $$;
+
+
+ALTER FUNCTION public.removejogadordotime(idjogadorsp integer, idtimesp integer) OWNER TO postgres;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: escalacoes; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.escalacoes (
+    idescalacao integer NOT NULL,
+    idtime integer NOT NULL,
+    formacao character varying(10)
+);
+
+
+ALTER TABLE public.escalacoes OWNER TO postgres;
+
+--
+-- Name: escalacoes_idescalacao_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.escalacoes_idescalacao_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.escalacoes_idescalacao_seq OWNER TO postgres;
+
+--
+-- Name: escalacoes_idescalacao_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.escalacoes_idescalacao_seq OWNED BY public.escalacoes.idescalacao;
+
+
+--
+-- Name: escalacoes_idtime_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.escalacoes_idtime_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.escalacoes_idtime_seq OWNER TO postgres;
+
+--
+-- Name: escalacoes_idtime_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.escalacoes_idtime_seq OWNED BY public.escalacoes.idtime;
+
+
+--
+-- Name: pessoas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.pessoas (
+    idpessoa integer NOT NULL,
+    datanascimento date,
+    nome character varying(50),
+    cpf character varying(11)
+);
+
+
+ALTER TABLE public.pessoas OWNER TO postgres;
+
+--
+-- Name: jogadores; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.jogadores (
+    numerocamisa integer DEFAULT '-1'::integer,
+    posicao character varying(15) DEFAULT 'indefinida'::character varying
+)
+INHERITS (public.pessoas);
+
+
+ALTER TABLE public.jogadores OWNER TO postgres;
+
+--
+-- Name: jogadores_escalacoes; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.jogadores_escalacoes (
+    idjogador integer NOT NULL,
+    idescalacao integer NOT NULL,
+    titular boolean
+);
+
+
+ALTER TABLE public.jogadores_escalacoes OWNER TO postgres;
+
+--
+-- Name: jogadores_escalacoes_idescalacao_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.jogadores_escalacoes_idescalacao_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.jogadores_escalacoes_idescalacao_seq OWNER TO postgres;
+
+--
+-- Name: jogadores_escalacoes_idescalacao_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.jogadores_escalacoes_idescalacao_seq OWNED BY public.jogadores_escalacoes.idescalacao;
+
+
+--
+-- Name: jogadores_escalacoes_idjogador_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.jogadores_escalacoes_idjogador_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.jogadores_escalacoes_idjogador_seq OWNER TO postgres;
+
+--
+-- Name: jogadores_escalacoes_idjogador_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.jogadores_escalacoes_idjogador_seq OWNED BY public.jogadores_escalacoes.idjogador;
+
+
+--
+-- Name: jogadores_times; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.jogadores_times (
+    idjogador integer NOT NULL,
+    idtime integer NOT NULL
+);
+
+
+ALTER TABLE public.jogadores_times OWNER TO postgres;
+
+--
+-- Name: jogadores_times_idjogador_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.jogadores_times_idjogador_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.jogadores_times_idjogador_seq OWNER TO postgres;
+
+--
+-- Name: jogadores_times_idjogador_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.jogadores_times_idjogador_seq OWNED BY public.jogadores_times.idjogador;
+
+
+--
+-- Name: jogadores_times_idtime_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.jogadores_times_idtime_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.jogadores_times_idtime_seq OWNER TO postgres;
+
+--
+-- Name: jogadores_times_idtime_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.jogadores_times_idtime_seq OWNED BY public.jogadores_times.idtime;
+
+
+--
+-- Name: logs; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.logs (
+    idlog integer NOT NULL,
+    operacao character varying(10) NOT NULL,
+    tabela character varying(50) NOT NULL,
+    data timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    usuario character varying(50) NOT NULL,
+    descricao text
+);
+
+
+ALTER TABLE public.logs OWNER TO postgres;
+
+--
+-- Name: logs_idlog_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.logs_idlog_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.logs_idlog_seq OWNER TO postgres;
+
+--
+-- Name: logs_idlog_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.logs_idlog_seq OWNED BY public.logs.idlog;
+
+
+--
+-- Name: partidas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.partidas (
+    idpartida integer NOT NULL,
+    timecasa integer NOT NULL,
+    timevisitante integer NOT NULL,
+    escalacaocasa integer NOT NULL,
+    escalacaovisitante integer NOT NULL,
+    golscasa integer DEFAULT 0,
+    golsvisitante integer DEFAULT 0,
+    data date,
+    horario time without time zone,
+    local character varying(20)
+);
+
+
+ALTER TABLE public.partidas OWNER TO postgres;
+
+--
+-- Name: partidas_escalacaocasa_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.partidas_escalacaocasa_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.partidas_escalacaocasa_seq OWNER TO postgres;
+
+--
+-- Name: partidas_escalacaocasa_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.partidas_escalacaocasa_seq OWNED BY public.partidas.escalacaocasa;
+
+
+--
+-- Name: partidas_escalacaovisitante_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.partidas_escalacaovisitante_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.partidas_escalacaovisitante_seq OWNER TO postgres;
+
+--
+-- Name: partidas_escalacaovisitante_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.partidas_escalacaovisitante_seq OWNED BY public.partidas.escalacaovisitante;
+
+
+--
+-- Name: partidas_idpartida_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.partidas_idpartida_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.partidas_idpartida_seq OWNER TO postgres;
+
+--
+-- Name: partidas_idpartida_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.partidas_idpartida_seq OWNED BY public.partidas.idpartida;
+
+
+--
+-- Name: partidas_timecasa_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.partidas_timecasa_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.partidas_timecasa_seq OWNER TO postgres;
+
+--
+-- Name: partidas_timecasa_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.partidas_timecasa_seq OWNED BY public.partidas.timecasa;
+
+
+--
+-- Name: partidas_timevisitante_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.partidas_timevisitante_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.partidas_timevisitante_seq OWNER TO postgres;
+
+--
+-- Name: partidas_timevisitante_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.partidas_timevisitante_seq OWNED BY public.partidas.timevisitante;
+
+
+--
+-- Name: pessoas_idpessoa_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.pessoas_idpessoa_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.pessoas_idpessoa_seq OWNER TO postgres;
+
+--
+-- Name: pessoas_idpessoa_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.pessoas_idpessoa_seq OWNED BY public.pessoas.idpessoa;
+
+
+--
+-- Name: times; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.times (
+    idtime integer NOT NULL,
+    nometime character varying(50),
+    idtreinador integer NOT NULL
+);
+
+
+ALTER TABLE public.times OWNER TO postgres;
+
+--
+-- Name: times_idtime_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.times_idtime_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.times_idtime_seq OWNER TO postgres;
+
+--
+-- Name: times_idtime_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.times_idtime_seq OWNED BY public.times.idtime;
+
+
+--
+-- Name: times_idtreinador_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.times_idtreinador_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.times_idtreinador_seq OWNER TO postgres;
+
+--
+-- Name: times_idtreinador_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.times_idtreinador_seq OWNED BY public.times.idtreinador;
+
+
+--
+-- Name: treinadores; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.treinadores (
+)
+INHERITS (public.pessoas);
+
+
+ALTER TABLE public.treinadores OWNER TO postgres;
+
+--
+-- Name: viewjogadores; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.viewjogadores AS
+ SELECT jogadores.nome AS "Nome do Jogador",
+    public.getidade(jogadores.idpessoa) AS "Idade",
+    times.nometime AS "Time"
+   FROM ((public.jogadores
+     JOIN public.jogadores_times ON ((jogadores.idpessoa = jogadores_times.idjogador)))
+     JOIN public.times ON ((jogadores_times.idtime = times.idtime)));
+
+
+ALTER VIEW public.viewjogadores OWNER TO postgres;
+
+--
+-- Name: viewpartidas; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.viewpartidas AS
+ SELECT partidas.data AS "Data",
+    partidas.horario AS "Hor rio",
+    partidas.local AS "Local",
+    timecasa.nometime AS "Time da Casa",
+    timevisitante.nometime AS "Time Visitante"
+   FROM ((public.partidas
+     JOIN public.times timecasa ON ((partidas.timecasa = timecasa.idtime)))
+     JOIN public.times timevisitante ON ((partidas.timevisitante = timevisitante.idtime)));
+
+
+ALTER VIEW public.viewpartidas OWNER TO postgres;
+
+--
+-- Name: viewpessoas; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.viewpessoas AS
+ SELECT j.idpessoa AS "ID",
+    j.nome AS "Nome",
+    public.getidade(j.idpessoa) AS "Idade",
+    'Jogador'::text AS "Tipo"
+   FROM public.jogadores j
+UNION
+ SELECT t.idpessoa AS "ID",
+    t.nome AS "Nome",
+    public.getidade(t.idpessoa) AS "Idade",
+    'Treinador'::text AS "Tipo"
+   FROM public.treinadores t
+  ORDER BY 4 DESC, 1;
+
+
+ALTER VIEW public.viewpessoas OWNER TO postgres;
+
+--
+-- Name: escalacoes idescalacao; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.escalacoes ALTER COLUMN idescalacao SET DEFAULT nextval('public.escalacoes_idescalacao_seq'::regclass);
+
+
+--
+-- Name: escalacoes idtime; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.escalacoes ALTER COLUMN idtime SET DEFAULT nextval('public.escalacoes_idtime_seq'::regclass);
+
+
+--
+-- Name: jogadores idpessoa; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores ALTER COLUMN idpessoa SET DEFAULT nextval('public.pessoas_idpessoa_seq'::regclass);
+
+
+--
+-- Name: jogadores_escalacoes idjogador; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_escalacoes ALTER COLUMN idjogador SET DEFAULT nextval('public.jogadores_escalacoes_idjogador_seq'::regclass);
+
+
+--
+-- Name: jogadores_escalacoes idescalacao; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_escalacoes ALTER COLUMN idescalacao SET DEFAULT nextval('public.jogadores_escalacoes_idescalacao_seq'::regclass);
+
+
+--
+-- Name: jogadores_times idjogador; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_times ALTER COLUMN idjogador SET DEFAULT nextval('public.jogadores_times_idjogador_seq'::regclass);
+
+
+--
+-- Name: jogadores_times idtime; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_times ALTER COLUMN idtime SET DEFAULT nextval('public.jogadores_times_idtime_seq'::regclass);
+
+
+--
+-- Name: logs idlog; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.logs ALTER COLUMN idlog SET DEFAULT nextval('public.logs_idlog_seq'::regclass);
+
+
+--
+-- Name: partidas idpartida; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas ALTER COLUMN idpartida SET DEFAULT nextval('public.partidas_idpartida_seq'::regclass);
+
+
+--
+-- Name: partidas timecasa; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas ALTER COLUMN timecasa SET DEFAULT nextval('public.partidas_timecasa_seq'::regclass);
+
+
+--
+-- Name: partidas timevisitante; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas ALTER COLUMN timevisitante SET DEFAULT nextval('public.partidas_timevisitante_seq'::regclass);
+
+
+--
+-- Name: partidas escalacaocasa; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas ALTER COLUMN escalacaocasa SET DEFAULT nextval('public.partidas_escalacaocasa_seq'::regclass);
+
+
+--
+-- Name: partidas escalacaovisitante; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas ALTER COLUMN escalacaovisitante SET DEFAULT nextval('public.partidas_escalacaovisitante_seq'::regclass);
+
+
+--
+-- Name: pessoas idpessoa; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.pessoas ALTER COLUMN idpessoa SET DEFAULT nextval('public.pessoas_idpessoa_seq'::regclass);
+
+
+--
+-- Name: times idtime; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.times ALTER COLUMN idtime SET DEFAULT nextval('public.times_idtime_seq'::regclass);
+
+
+--
+-- Name: times idtreinador; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.times ALTER COLUMN idtreinador SET DEFAULT nextval('public.times_idtreinador_seq'::regclass);
+
+
+--
+-- Name: treinadores idpessoa; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.treinadores ALTER COLUMN idpessoa SET DEFAULT nextval('public.pessoas_idpessoa_seq'::regclass);
+
+
+--
+-- Data for Name: escalacoes; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.escalacoes (idescalacao, idtime, formacao) FROM stdin;
+1	1	4-2-3-1
+2	2	3-4-2-1
+\.
+
+
+--
+-- Data for Name: jogadores; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.jogadores (idpessoa, datanascimento, nome, cpf, numerocamisa, posicao) FROM stdin;
+3	1995-08-21	Agustin Rossi	12345678901	1	Goleiro
+4	2003-09-06	Wesley Fran‡a	12345678902	43	Lateral
+5	1996-01-03	Leo Ortiz	12345678903	3	Zagueiro
+6	1996-01-31	Leo Pereira	12345678904	4	Zagueiro
+7	1991-01-26	Alex Sandro Lobo Silva	12345678905	26	Lateral
+8	1997-05-20	Gerson Santos da Silva	12345678906	8	Meio de Campo
+9	2003-02-28	Evertton Araujo	12345678907	52	Meio de Campo
+10	2000-11-01	Gonzalo Plata	12345678908	45	Ponta
+11	1994-06-01	Giorgian De Arrascaeta	12345678909	14	Meio de Campo
+12	1996-03-12	Michael Richard Delgado de Oliveira	12345678910	30	Ponta
+13	1996-08-30	Gabriel Barbosa	12345678911	99	Atacante
+14	1986-07-25	Givanildo Vieira de Sousa	23456789012	7	Atacante
+15	1997-04-14	Guilherme Arana	23456789013	13	Ponta
+16	2000-07-15	Paulo Henrique Sampaio Filho	23456789014	10	Ponta
+17	2001-06-21	Rubens Antonio Dias	23456789015	44	Lateral
+18	1998-08-21	Alan Franco Palma	23456789016	23	Meio de Campo
+19	1994-05-04	Otavio Henrique Passos Santos	23456789017	5	Meio de Campo
+20	1994-01-05	Gustavo Scarpa	23456789018	6	Lateral
+21	1993-02-09	Junior Alonso	23456789019	8	Lateral
+22	1991-07-12	Rodrigo Battaglia	23456789020	21	Zagueiro
+23	1997-02-01	Lyanco Evangelista Silveira Neves Vojnovic	23456789021	2	Lateral
+24	1990-07-22	Everson Felipe Marques Pires	23456789022	22	Goleiro
+25	1993-03-24	Guillermo Varela	34567890123	2	Lateral
+26	1997-06-19	Ayrton Lucas Dantas de Medeiros	34567890124	6	Lateral
+27	1996-02-12	Fabr¡cio Bruno	34567890125	15	Zagueiro
+28	2002-11-30	Carlos Alcaraz	34567890126	37	Meio de Campo
+29	2006-07-04	Lorran Lucas Pereira de Sousa	34567890127	19	Meio de Campo
+30	2005-08-18	Matheus Gon‡alves	34567890128	20	Ponta
+31	1987-04-22	David Luiz	34567890129	23	Zagueiro
+32	2001-05-24	Matheus Cunha Queiroz	34567890130	25	Goleiro
+33	1997-03-03	Allan Rodrigues de Souza	34567890131	29	Meio de Campo
+34	2003-04-25	Cleiton Santana	34567890132	33	Zagueiro
+35	2004-01-09	Francisco Dyogo Bento Alves	34567890133	49	Goleiro
+36	1989-01-12	Alan Kardec	45678901234	18	Atacante
+37	1998-03-10	Mat¡as Zaracho	45678901235	11	Meio de Campo
+38	1993-06-16	Renzo Saravia	45678901236	26	Lateral
+39	2005-09-21	Alisson Santana	45678901237	45	Meio de Campo
+40	1999-04-01	Bruno Fuchs	45678901238	3	Zagueiro
+41	1989-11-20	Eduardo Vargas	45678901239	11	Atacante
+42	1995-04-28	Igor Rabello	45678901240	16	Zagueiro
+43	1999-03-17	Igor Gomes	45678901241	17	Meio de Campo
+44	1986-06-23	Mariano Ferreira Filho	45678901242	25	Lateral
+45	2004-08-26	Paulo Vitor Monteiro	45678901243	27	Zagueiro
+46	2002-11-24	Brahian Palacios	45678901244	30	Lateral
+\.
+
+
+--
+-- Data for Name: jogadores_escalacoes; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.jogadores_escalacoes (idjogador, idescalacao, titular) FROM stdin;
+3	1	t
+4	1	t
+5	1	t
+6	1	t
+7	1	t
+8	1	t
+9	1	t
+10	1	t
+11	1	t
+12	1	t
+13	1	t
+14	2	t
+15	2	t
+16	2	t
+17	2	t
+18	2	t
+19	2	t
+20	2	t
+21	2	t
+22	2	t
+23	2	t
+24	2	t
+25	1	f
+26	1	f
+27	1	f
+28	1	f
+29	1	f
+30	1	f
+31	1	f
+32	1	f
+33	1	f
+34	1	f
+35	1	f
+36	2	f
+37	2	f
+38	2	f
+39	2	f
+40	2	f
+41	2	f
+42	2	f
+43	2	f
+44	2	f
+45	2	f
+46	2	f
+\.
+
+
+--
+-- Data for Name: jogadores_times; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.jogadores_times (idjogador, idtime) FROM stdin;
+3	1
+4	1
+5	1
+6	1
+7	1
+8	1
+9	1
+10	1
+11	1
+12	1
+13	1
+14	2
+15	2
+16	2
+17	2
+18	2
+19	2
+20	2
+21	2
+22	2
+23	2
+24	2
+25	1
+26	1
+27	1
+28	1
+29	1
+30	1
+31	1
+32	1
+33	1
+34	1
+35	1
+36	2
+37	2
+38	2
+39	2
+40	2
+41	2
+42	2
+43	2
+44	2
+45	2
+46	2
+\.
+
+
+--
+-- Data for Name: logs; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.logs (idlog, operacao, tabela, data, usuario, descricao) FROM stdin;
+\.
+
+
+--
+-- Data for Name: partidas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.partidas (idpartida, timecasa, timevisitante, escalacaocasa, escalacaovisitante, golscasa, golsvisitante, data, horario, local) FROM stdin;
+1	1	2	1	2	0	0	2024-11-03	16:00:00	MaracanÆ
+2	2	1	2	1	0	0	2024-11-10	16:00:00	Arena MRV
+\.
+
+
+--
+-- Data for Name: pessoas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.pessoas (idpessoa, datanascimento, nome, cpf) FROM stdin;
+\.
+
+
+--
+-- Data for Name: times; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.times (idtime, nometime, idtreinador) FROM stdin;
+1	Flamengo	1
+2	Atletico MG	2
+\.
+
+
+--
+-- Data for Name: treinadores; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.treinadores (idpessoa, datanascimento, nome, cpf) FROM stdin;
+1	1985-08-09	Filipe Luis	01234567890
+2	1980-09-07	Gabriel Milito	06548662498
+\.
+
+
+--
+-- Name: escalacoes_idescalacao_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.escalacoes_idescalacao_seq', 2, true);
+
+
+--
+-- Name: escalacoes_idtime_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.escalacoes_idtime_seq', 1, false);
+
+
+--
+-- Name: jogadores_escalacoes_idescalacao_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.jogadores_escalacoes_idescalacao_seq', 1, false);
+
+
+--
+-- Name: jogadores_escalacoes_idjogador_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.jogadores_escalacoes_idjogador_seq', 1, false);
+
+
+--
+-- Name: jogadores_times_idjogador_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.jogadores_times_idjogador_seq', 1, false);
+
+
+--
+-- Name: jogadores_times_idtime_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.jogadores_times_idtime_seq', 1, false);
+
+
+--
+-- Name: logs_idlog_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.logs_idlog_seq', 1, false);
+
+
+--
+-- Name: partidas_escalacaocasa_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.partidas_escalacaocasa_seq', 1, false);
+
+
+--
+-- Name: partidas_escalacaovisitante_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.partidas_escalacaovisitante_seq', 1, false);
+
+
+--
+-- Name: partidas_idpartida_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.partidas_idpartida_seq', 2, true);
+
+
+--
+-- Name: partidas_timecasa_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.partidas_timecasa_seq', 1, false);
+
+
+--
+-- Name: partidas_timevisitante_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.partidas_timevisitante_seq', 1, false);
+
+
+--
+-- Name: pessoas_idpessoa_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.pessoas_idpessoa_seq', 46, true);
+
+
+--
+-- Name: times_idtime_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.times_idtime_seq', 2, true);
+
+
+--
+-- Name: times_idtreinador_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.times_idtreinador_seq', 1, false);
+
+
+--
+-- Name: escalacoes escalacoes_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.escalacoes
+    ADD CONSTRAINT escalacoes_pkey PRIMARY KEY (idescalacao);
+
+
+--
+-- Name: jogadores_escalacoes jogadores_escalacoes_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_escalacoes
+    ADD CONSTRAINT jogadores_escalacoes_pkey PRIMARY KEY (idjogador);
+
+
+--
+-- Name: jogadores_times jogadores_times_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_times
+    ADD CONSTRAINT jogadores_times_pkey PRIMARY KEY (idjogador);
+
+
+--
+-- Name: logs logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.logs
+    ADD CONSTRAINT logs_pkey PRIMARY KEY (idlog);
+
+
+--
+-- Name: partidas partidas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas
+    ADD CONSTRAINT partidas_pkey PRIMARY KEY (idpartida);
+
+
+--
+-- Name: pessoas pessoas_cpf_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.pessoas
+    ADD CONSTRAINT pessoas_cpf_key UNIQUE (cpf);
+
+
+--
+-- Name: pessoas pessoas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.pessoas
+    ADD CONSTRAINT pessoas_pkey PRIMARY KEY (idpessoa);
+
+
+--
+-- Name: times times_idtreinador_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.times
+    ADD CONSTRAINT times_idtreinador_key UNIQUE (idtreinador);
+
+
+--
+-- Name: times times_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.times
+    ADD CONSTRAINT times_pkey PRIMARY KEY (idtime);
+
+
+--
+-- Name: jogadores uq_jogadores_cpf; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores
+    ADD CONSTRAINT uq_jogadores_cpf UNIQUE (cpf);
+
+
+--
+-- Name: jogadores uq_jogadores_idpessoa; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores
+    ADD CONSTRAINT uq_jogadores_idpessoa UNIQUE (idpessoa);
+
+
+--
+-- Name: treinadores uq_treinadores_cpf; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.treinadores
+    ADD CONSTRAINT uq_treinadores_cpf UNIQUE (cpf);
+
+
+--
+-- Name: treinadores uq_treinadores_idpessoa; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.treinadores
+    ADD CONSTRAINT uq_treinadores_idpessoa UNIQUE (idpessoa);
+
+
+--
+-- Name: escalacoes trg_log_escalacoes; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_log_escalacoes AFTER INSERT OR DELETE OR UPDATE ON public.escalacoes FOR EACH ROW EXECUTE FUNCTION public.log_operacoes();
+
+
+--
+-- Name: jogadores trg_log_jogadores; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_log_jogadores AFTER INSERT OR DELETE OR UPDATE ON public.jogadores FOR EACH ROW EXECUTE FUNCTION public.log_operacoes();
+
+
+--
+-- Name: jogadores_escalacoes trg_log_jogadores_escalacoes; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_log_jogadores_escalacoes AFTER INSERT OR DELETE OR UPDATE ON public.jogadores_escalacoes FOR EACH ROW EXECUTE FUNCTION public.log_operacoes();
+
+
+--
+-- Name: jogadores_times trg_log_jogadores_times; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_log_jogadores_times AFTER INSERT OR DELETE OR UPDATE ON public.jogadores_times FOR EACH ROW EXECUTE FUNCTION public.log_operacoes();
+
+
+--
+-- Name: partidas trg_log_partidas; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_log_partidas AFTER INSERT OR DELETE OR UPDATE ON public.partidas FOR EACH ROW EXECUTE FUNCTION public.log_operacoes();
+
+
+--
+-- Name: times trg_log_times; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_log_times AFTER INSERT OR DELETE OR UPDATE ON public.times FOR EACH ROW EXECUTE FUNCTION public.log_operacoes();
+
+
+--
+-- Name: treinadores trg_log_treinadores; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_log_treinadores AFTER INSERT OR DELETE OR UPDATE ON public.treinadores FOR EACH ROW EXECUTE FUNCTION public.log_operacoes();
+
+
+--
+-- Name: escalacoes fk_escalacoes_2; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.escalacoes
+    ADD CONSTRAINT fk_escalacoes_2 FOREIGN KEY (idtime) REFERENCES public.times(idtime);
+
+
+--
+-- Name: jogadores_escalacoes fk_jogadores_escalacoes_2; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_escalacoes
+    ADD CONSTRAINT fk_jogadores_escalacoes_2 FOREIGN KEY (idjogador) REFERENCES public.jogadores(idpessoa);
+
+
+--
+-- Name: jogadores_escalacoes fk_jogadores_escalacoes_3; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_escalacoes
+    ADD CONSTRAINT fk_jogadores_escalacoes_3 FOREIGN KEY (idescalacao) REFERENCES public.escalacoes(idescalacao);
+
+
+--
+-- Name: jogadores_times fk_jogadores_times_1; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_times
+    ADD CONSTRAINT fk_jogadores_times_1 FOREIGN KEY (idjogador) REFERENCES public.jogadores(idpessoa);
+
+
+--
+-- Name: jogadores_times fk_jogadores_times_2; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jogadores_times
+    ADD CONSTRAINT fk_jogadores_times_2 FOREIGN KEY (idtime) REFERENCES public.times(idtime);
+
+
+--
+-- Name: partidas fk_partidas_escalacaocasa; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas
+    ADD CONSTRAINT fk_partidas_escalacaocasa FOREIGN KEY (escalacaocasa) REFERENCES public.escalacoes(idescalacao);
+
+
+--
+-- Name: partidas fk_partidas_escalacaovisitante; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas
+    ADD CONSTRAINT fk_partidas_escalacaovisitante FOREIGN KEY (escalacaovisitante) REFERENCES public.escalacoes(idescalacao);
+
+
+--
+-- Name: partidas fk_partidas_timecasa; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas
+    ADD CONSTRAINT fk_partidas_timecasa FOREIGN KEY (timecasa) REFERENCES public.times(idtime);
+
+
+--
+-- Name: partidas fk_partidas_timevisitante; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidas
+    ADD CONSTRAINT fk_partidas_timevisitante FOREIGN KEY (timevisitante) REFERENCES public.times(idtime);
+
+
+--
+-- Name: times fk_times_2; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.times
+    ADD CONSTRAINT fk_times_2 FOREIGN KEY (idtreinador) REFERENCES public.treinadores(idpessoa);
+
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: postgres
+--
+
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
